@@ -1,0 +1,10 @@
+ollama
+faster-whisper
+speechrecognition
+edge-tts
+pygame
+pyaudio
+requests
+playwright
+pyautogui
+keyboard

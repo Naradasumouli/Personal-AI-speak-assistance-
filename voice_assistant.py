@@ -9,6 +9,7 @@ from datetime import datetime
 import os
 import webbrowser
 import asyncio
+import json
 
 # =========================
 # AI
@@ -41,6 +42,37 @@ model = WhisperModel(
 pygame.mixer.init()
 
 # =========================
+# MEMORY FUNCTIONS
+# =========================
+
+MEMORY_FILE = "memory.json"
+
+def load_memory():
+
+    try:
+
+        with open(MEMORY_FILE, "r") as f:
+
+            return json.load(f)
+
+    except:
+
+        return {
+            "personal": [],
+            "work": [],
+            "preferences": [],
+            "tasks": []
+        }
+
+def save_memory(memory):
+
+    with open(MEMORY_FILE, "w") as f:
+
+        json.dump(memory, f, indent=4)
+
+memory = load_memory()
+
+# =========================
 # SPEAK FUNCTION
 # =========================
 
@@ -60,6 +92,7 @@ async def async_speak(text):
     pygame.mixer.music.load(filename)
 
     pygame.mixer.music.play()
+
     while pygame.mixer.music.get_busy():
 
         if keyboard.is_pressed("s"):
@@ -146,6 +179,112 @@ while True:
         continue
 
     user_input = user_input.lower()
+
+    # =========================
+    # SMART MEMORY DETECTION
+    # =========================
+
+    memory_response = ollama.chat(
+        model="qwen2.5-coder:3b",
+        messages=[
+            {
+                "role": "system",
+                "content": """
+                You are a memory classifier.
+
+                Analyze the user input.
+
+                If the message contains personal memory,
+                return ONLY this format:
+
+                CATEGORY: personal
+                MEMORY: <memory>
+
+                OR
+
+                CATEGORY: work
+                MEMORY: <memory>
+
+                OR
+
+                CATEGORY: preferences
+                MEMORY: <memory>
+
+                OR
+
+                CATEGORY: tasks
+                MEMORY: <memory>
+
+                If no memory should be saved,
+                return ONLY:
+
+                CATEGORY: none
+                """
+            },
+            {
+                "role": "user",
+                "content": user_input
+            }
+        ]
+    )
+
+    memory_result = memory_response["message"]["content"]
+
+    print(memory_result)
+
+    if "CATEGORY:" in memory_result:
+
+        if "CATEGORY: none" not in memory_result:
+
+            lines = memory_result.split("\n")
+
+            category = ""
+            memory_text = ""
+
+            for line in lines:
+
+                if "CATEGORY:" in line:
+
+                    category = line.replace(
+                        "CATEGORY:",
+                        ""
+                    ).strip()
+
+                if "MEMORY:" in line:
+
+                    memory_text = line.replace(
+                        "MEMORY:",
+                        ""
+                    ).strip()
+
+            if category in memory:
+
+                if memory_text not in memory[category]:
+
+                    memory[category].append(memory_text)
+
+                    save_memory(memory)
+
+                    speak(
+                        f"I will remember that in {category}"
+                    )
+
+    # =========================
+    # SHOW MEMORY
+    # =========================
+
+    if "show memory" in user_input:
+
+        memory_text = json.dumps(
+            memory,
+            indent=2
+        )
+
+        speak("Showing all memory.")
+
+        print(memory_text)
+
+        continue
 
     # =========================
     # EXIT
@@ -259,7 +398,10 @@ while True:
 
     if "search" in user_input:
 
-        search_query = user_input.replace("search", "").strip()
+        search_query = user_input.replace(
+            "search",
+            ""
+        ).strip()
 
         speak(f"Searching for {search_query}")
 
@@ -270,6 +412,15 @@ while True:
         continue
 
     # =========================
+    # MEMORY CONTEXT
+    # =========================
+
+    memory_context = json.dumps(
+        memory,
+        indent=2
+    )
+
+    # =========================
     # AI RESPONSE
     # =========================
 
@@ -278,7 +429,7 @@ while True:
         messages=[
             {
                 "role": "system",
-                "content": """
+                "content": f"""
                 You are Mama Bro,
                 a professional AI assistant.
 
@@ -287,6 +438,10 @@ while True:
                 and concisely.
 
                 Be friendly and helpful.
+
+                Here is the user's memory:
+
+                {memory_context}
                 """
             },
             {
